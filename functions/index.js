@@ -99,19 +99,22 @@ exports.send_suspicious_unlock_attempt_alert = functions.https.onRequest((reques
 })
 
 exports.update_letter_count = functions.https.onRequest((request, response) => {
-    if (request.method === "PUT") {
-        return db.collection("status").doc("configuration").update({
-            LetterCount: request.body["LetterCount"]
-        }).then(_ => {
-            const notification = {
-                "title": "MaleMate",
-                "body": "You have new letters!",
-                "type": "Info"
-            };
-            sendPushNotification(notification);
-            return response.status(200).json(true);
-        }).catch(err => {
-            return response.status(500).send(err);
+    if (request.method === "GET") {
+        return db.collection("status").doc("configuration").get().then(documentSnapshot => {
+            const letter_Count = parseInt(documentSnapshot.data()["LetterCount"]);
+            return db.collection("status").doc("configuration").update({
+                LetterCount: letter_Count + 1
+            }).then(_ => {
+                const notification = {
+                    "title": "MaleMate",
+                    "body": "You have new letters!",
+                    "type": "Info"
+                };
+                sendPushNotification(notification);
+                return response.status(200).json(true);
+            }).catch(err => {
+                return response.status(500).send(err);
+            });
         });
     } else {
         return response.status(405).send("Method not allowed");
@@ -124,6 +127,11 @@ exports.update_letter_full = functions.https.onRequest((request, response) => {
         return db.collection("status").doc("configuration").update({
             IsLetterBoxFull: status
         }).then(_ => {
+            if (!status) {
+                db.collection("status").doc("configuration").update({
+                    LetterCount: "0"
+                }).then().catch();
+            }
             const notification = {
                 "title": "MaleMate - Warning",
                 "body": status ? "Your letter box is getting full" : "Your letters are taken from box",
