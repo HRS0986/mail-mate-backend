@@ -28,7 +28,6 @@ function sendPushNotification(notificationData) {
     });
 }
 
-
 exports.get_messages = functions.https.onRequest((request, response) => {
     if (request.method === "GET") {
         return db.collection("messages").doc("msg").get().then((querySnapshot) => {
@@ -71,6 +70,34 @@ exports.get_fcm_keys = functions.https.onRequest((request, response) => {
     }
 });
 
+exports.send_damage_alert = functions.https.onRequest((request, response) => {
+    if (request.method === "GET") {
+        const notification = {
+            "body": "Someone is trying to damage the letterbox",
+            "title": "Mail Mate - Security Alert",
+            "type": "Critical"
+        }
+        sendPushNotification(notification);
+        return response.status(200).json(true);
+    } else {
+        return response.status(405).json("Method not allowed");
+    }
+});
+
+exports.send_suspicious_unlock_attempt_alert = functions.https.onRequest((request, response) => {
+    if (request.method === "GET") {
+        const notification = {
+            "body": "Suspicious unlock attempt detected",
+            "title": "Mail Mate - Security Alert",
+            "type": "Critical"
+        }
+        sendPushNotification(notification);
+        return response.status(200).json(true);
+    } else {
+        return response.status(405).json("Method not allowed");
+    }
+})
+
 exports.update_letter_count = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
         return db.collection("status").doc("configuration").update({
@@ -93,7 +120,7 @@ exports.update_letter_count = functions.https.onRequest((request, response) => {
 
 exports.update_letter_full = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(request.body);
+        const status = Boolean(parseInt(request.body));
         return db.collection("status").doc("configuration").update({
             IsLetterBoxFull: status
         }).then(_ => {
@@ -114,7 +141,7 @@ exports.update_letter_full = functions.https.onRequest((request, response) => {
 
 exports.update_parcel_contain_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(request.body);
+        const status = Boolean(parseInt(request.body));
         return db.collection("status").doc("configuration").update({
             IsParcelContain: status
         }).then(_ => {
@@ -135,7 +162,7 @@ exports.update_parcel_contain_status = functions.https.onRequest((request, respo
 
 exports.update_parcel_locked_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(request.body);
+        const status = Boolean(parseInt(request.body));
         return db.collection("status").doc("configuration").update({
             IsParcelBoxLocked: status
         }).then(querySnapshot => {
@@ -158,7 +185,7 @@ exports.update_parcel_locked_status = functions.https.onRequest((request, respon
 
 exports.update_letter_locked_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(request.body);
+        const status = Boolean(parseInt(request.body));
         return db.collection("status").doc("configuration").update({
             IsLetterBoxLocked: status
         }).then(querySnapshot => {
@@ -191,31 +218,3 @@ exports.create_notification = functions.https.onRequest((request, response) => {
         return response.status(405).send("Method not allowed");
     }
 });
-
-exports.send_damage_alert = functions.https.onRequest((request, response) => {
-    if (request.method === "GET") {
-        const notification = {
-            "body": "Someone is trying to damage the letterbox",
-            "title": "Mail Mate - Security Alert",
-            "type": "Critical"
-        }
-        sendPushNotification(notification);
-        return response.status(200).json(true);
-    } else {
-        return response.status(405).json("Method not allowed");
-    }
-});
-
-exports.send_suspicious_unlock_attempt_alert = functions.https.onRequest((request, response) => {
-    if (request.method === "GET") {
-        const notification = {
-            "body": "Suspicious unlock attempt detected",
-            "title": "Mail Mate - Security Alert",
-            "type": "Critical"
-        }
-        sendPushNotification(notification);
-        return response.status(200).json(true);
-    } else {
-        return response.status(405).json("Method not allowed");
-    }
-})
