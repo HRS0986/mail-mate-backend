@@ -5,26 +5,40 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
 
-function sendPushNotification(notificationData) {
-    const payload = {
-        token: "dCgfKiROQ3e7KyybACO6e8:APA91bGap8tK_4NxaaRfuWHLU1DefGAFO36yAtkoSq0QDhqI3B9qyLKKQcDm95s3SOJuYLha8zXtA-ONSvyss4b_EVcaVoxzkLLKqJh3yw5CF7Yult9USQvgShvkfDV_QsnyLwSDs3LE",
-        notification: notificationData
-    };
-    admin.messaging().send(payload).then((res) => {
-        const date = new Date()
-        const notification = {
-            "Body": notificationData["body"],
+const CRITICAL = "Critical";
+const WARNING = "Warning";
+const INFO = "Info";
+
+async function sendPushNotification(notificationData, notificationType) {
+    return db.collection("DeviceKeys").doc("FCMKeys").get().then(snapshot => {
+        let tokens = snapshot.data()["Keys"];
+        const payload = {
+            tokens: tokens,
+            notification: notificationData
+        }
+        const now = new Date();
+        const notificationObject = {
             "Title": notificationData["title"],
-            "Date": date.toLocaleString(),
-            "Type": notificationData["type"]
-        };
-        db.collection("notifications").add(notification).then(() => {
-            return {success: true};
-        }).catch(() => {
-            return {success: false};
+            "Body": notificationData["body"],
+            "Date": now.toLocaleString(),
+            "Type": notificationType
+        }
+        return db.collection("notifications").add(notificationObject).then(() => {
+            return admin.messaging().sendEachForMulticast(payload).then((res) => {
+                return {success: true, tokens: tokens};
+            }).catch((err) => {
+                return {success: false, error: err};
+            });
+        }).catch((err) => {
+            return {success: false, error: err};
         });
-    }).catch((error) => {
-        return {success: false};
+
+    });
+}
+
+function getFcmTokens() {
+    return db.collection("DeviceKeys").doc("FCMKeys").get().then(snapshot => {
+        return snapshot.data()["Keys"];
     });
 }
 
@@ -72,13 +86,15 @@ exports.get_fcm_keys = functions.https.onRequest((request, response) => {
 
 exports.send_damage_alert = functions.https.onRequest((request, response) => {
     if (request.method === "GET") {
-        const notification = {
-            "body": "Someone is trying to damage the letterbox",
-            "title": "Mail Mate - Security Alert",
-            "type": "Critical"
-        }
-        sendPushNotification(notification);
-        return response.status(200).json(true);
+        return getFcmTokens().then(data => {
+            const notificationObject = {
+                "body": "Someone is trying to damage the letterbox",
+                "title": "Mail Mate - Security Alert",
+            };
+            return sendPushNotification(notificationObject, CRITICAL).then(data => {
+                return response.status(200).json(data);
+            });
+        });
     } else {
         return response.status(405).json("Method not allowed");
     }
@@ -86,13 +102,13 @@ exports.send_damage_alert = functions.https.onRequest((request, response) => {
 
 exports.send_suspicious_unlock_attempt_alert = functions.https.onRequest((request, response) => {
     if (request.method === "GET") {
-        const notification = {
+        const notificationObject = {
             "body": "Suspicious unlock attempt detected",
             "title": "Mail Mate - Security Alert",
-            "type": "Critical"
-        }
-        sendPushNotification(notification);
-        return response.status(200).json(true);
+        };
+        return sendPushNotification(notificationObject, CRITICAL).then(data => {
+            return response.status(200).json(data);
+        });
     } else {
         return response.status(405).json("Method not allowed");
     }
@@ -105,13 +121,13 @@ exports.update_letter_count = functions.https.onRequest((request, response) => {
             return db.collection("status").doc("configuration").update({
                 LetterCount: letter_Count + 1
             }).then(_ => {
-                const notification = {
+                const notificationObject = {
                     "title": "MaleMate",
-                    "body": "You have new letters!",
-                    "type": "Info"
+                    "body": "You have new letters!"
                 };
-                sendPushNotification(notification);
-                return response.status(200).json(true);
+                return sendPushNotification(notificationObject, INFO).then(data => {
+                    return response.status(200).json(data);
+                });
             }).catch(err => {
                 return response.status(500).send(err);
             });
@@ -123,7 +139,7 @@ exports.update_letter_count = functions.https.onRequest((request, response) => {
 
 exports.update_letter_full = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(parseInt(request.body));
+        const status = Boolean(parseInt(request.body["IsLetterBoxFull"]));
         return db.collection("status").doc("configuration").update({
             IsLetterBoxFull: status
         }).then(_ => {
@@ -132,13 +148,13 @@ exports.update_letter_full = functions.https.onRequest((request, response) => {
                     LetterCount: "0"
                 }).then().catch();
             }
-            const notification = {
+            const notificationObject = {
                 "title": "MaleMate - Warning",
-                "body": status ? "Your letter box is getting full" : "Your letters are taken from box",
-                "type": "Warning"
+                "body": status ? "Your letter box is getting full" : "Your letters are taken from box"
             };
-            sendPushNotification(notification);
-            return response.status(200).json(true);
+            return sendPushNotification(notificationObject, WARNING).then(data => {
+                return response.status(200).json(data);
+            });
         }).catch(err => {
             return response.status(500).send(err);
         });
@@ -149,17 +165,17 @@ exports.update_letter_full = functions.https.onRequest((request, response) => {
 
 exports.update_parcel_contain_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(parseInt(request.body));
+        const status = Boolean(parseInt(request.body["IsParcelContain"]));
         return db.collection("status").doc("configuration").update({
             IsParcelContain: status
         }).then(_ => {
-            const notification = {
+            const notificationObject = {
                 "title": status ? "MaleMate" : "MaleMate - Warning",
-                "body": status ? "You have new parcel" : "Your parcel is taken from the box",
-                "type": status ? "Info" : "Warning"
+                "body": status ? "You have new parcel" : "Your parcel is taken from the box"
             };
-            sendPushNotification(notification);
-            return response.status(200).json(true);
+            return sendPushNotification(notificationObject, status ? INFO : WARNING).then(data => {
+                return response.status(200).json(data);
+            });
         }).catch(err => {
             return response.status(500).send(err);
         });
@@ -170,17 +186,18 @@ exports.update_parcel_contain_status = functions.https.onRequest((request, respo
 
 exports.update_parcel_locked_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(parseInt(request.body));
+        const status = Boolean(parseInt(request.body["IsParcelBoxLocked"]));
         return db.collection("status").doc("configuration").update({
             IsParcelBoxLocked: status
         }).then(querySnapshot => {
             if (!status) {
-                const notification = {
+                const notificationObject = {
                     "title": "MaleMate - Warning",
-                    "body": "Parcel box is unlocked",
-                    "type": "Warning"
+                    "body": "Parcel box is unlocked"
                 };
-                sendPushNotification(notification);
+                return sendPushNotification(notificationObject, WARNING).then(data => {
+                    return response.status(200).json(data);
+                });
             }
             return response.status(200).json(true);
         }).catch(err => {
@@ -193,17 +210,18 @@ exports.update_parcel_locked_status = functions.https.onRequest((request, respon
 
 exports.update_letter_locked_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
-        const status = Boolean(parseInt(request.body));
+        const status = Boolean(parseInt(request.body["IsLetterBoxLocked"]));
         return db.collection("status").doc("configuration").update({
             IsLetterBoxLocked: status
         }).then(querySnapshot => {
             if (!status) {
-                const notification = {
+                const notificationObject = {
                     "title": "MaleMate - Warning",
-                    "body": "Letter box is unlocked",
-                    "type": "Warning"
+                    "body": "Letter box is unlocked"
                 };
-                sendPushNotification(notification);
+                return sendPushNotification(notificationObject, WARNING).then(data => {
+                    return response.status(200).json(data);
+                });
             }
             return response.status(200).json(true);
         }).catch(err => {
