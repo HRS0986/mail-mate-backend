@@ -186,6 +186,7 @@ exports.update_parcel_contain_status = functions.https.onRequest((request, respo
 
 exports.update_parcel_locked_status = functions.https.onRequest((request, response) => {
     if (request.method === "PUT") {
+        const sendAlert = request.query.sendAlert;
         const status = Boolean(parseInt(request.body["IsParcelBoxLocked"]));
         return db.collection("status").doc("configuration").update({
             IsParcelBoxLocked: status
@@ -195,9 +196,13 @@ exports.update_parcel_locked_status = functions.https.onRequest((request, respon
                     "title": "MaleMate - Warning",
                     "body": "Parcel box is unlocked"
                 };
-                return sendPushNotification(notificationObject, WARNING).then(data => {
-                    return response.status(200).json(data);
-                });
+                if (sendAlert === "1") {
+                    return sendPushNotification(notificationObject, WARNING).then(data => {
+                        return response.status(200).json(data);
+                    });
+                }else{
+                    return response.status(200).json(true);
+                }
             }
             return response.status(200).json(true);
         }).catch(err => {
